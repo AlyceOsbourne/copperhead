@@ -9,3 +9,7 @@ readme = "README.md"
 license = {file = "LICENSE"}
 classifiers = ["License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)"]
 dynamic = ["version", "description"]
+
+[dependencies]
+rustimport = ">=1.4.0"
+Jinja2 = ">=3.1.3"
