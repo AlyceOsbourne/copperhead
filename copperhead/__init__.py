@@ -23,11 +23,12 @@ env = jinja2.Environment(
         lstrip_blocks = False,
         trim_blocks = False,
         keep_trailing_newline = True,
+        autoescape = False,
 )
 TYPE_MAP = {int         : "i32", str: "String", bool: "bool", float: "f32", typing.List: "Vec<{}>", list: "Vec<{}>",
             typing.Dict : 'HashMap<{}, {}>', dict: 'HashMap<{}, {}>', typing.Set: 'HashSet<{}>', set: 'HashSet<{}>',
             typing.Tuple: '({})', tuple: '({})', typing.Self: 'Self', None: '()', }
-UNLINK = False
+UNLINK = True
 
 
 # noinspection PyArgumentList,PyTypeChecker
@@ -116,7 +117,7 @@ impl {{ cls.name }} {
 
     {% for name, args, return_type, doc in cls.methods -%}
     pub fn {{ name }}({{ args|join(', ') }}) -> PyResult<{{ return_type }}> {
-        {{ doc }}
+        {{ doc | indent(8) }}
     }
     {%- endfor %}
     
@@ -203,7 +204,7 @@ impl {{ cls.name }} {
     
     {% for name, args, return_type, doc in cls.methods -%}
     pub fn {{ name }}({{ args|join(', ') }}) -> {{ return_type }} {
-        {{ doc }}
+        {{ doc | indent(8) }}
     }
     {%- endfor %}
     
@@ -256,7 +257,7 @@ class PyFunction:
         template = """
 #[pyfunction]
 pub fn {{ func.name }}({{ func.args|join(', ') }}) -> PyResult<{{ func.return_type }}> {
-    {{ func.body }}
+    {{ func.body | indent(4) }
 }
         """
         return env.from_string(template, globals = {'func': self}).render()
@@ -404,3 +405,24 @@ def mirror(module: types.ModuleType):
     else:
         os.utime(f'{rust_module.name}.rs')
     return module
+
+
+if __name__ == '__main__':
+    @rusty(py_class = True)
+    class Particle:
+        x: float
+        y: float
+        ax: float
+        ay: float
+        
+        def integrate(self, dt: float) -> None:
+            """
+self.x += self.ax * dt;
+self.y += self.ay * dt;
+self.ax *= 0.99;
+self.ay *= 0.99;
+Ok(())
+            """
+            
+    import __main__
+    
