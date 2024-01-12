@@ -4,18 +4,6 @@
 
 Copperhead is an innovative Python library currently in its early stages of development. Its goal is to facilitate the integration of Rust code into Python projects, offering an intuitive approach for Python developers to leverage Rust's performance and type safety. The library is a work in progress (WIP), and we're actively developing its features and capabilities.
 
-## Installation
-
-**Note:** Copperhead is under active development, and its features are still evolving. Ensure you have Rust and Python installed on your system before proceeding.
-
-To install Copperhead, use pip:
-
-```bash
-pip install copperhead
-```
-
-Be aware that due to its WIP status, some features might be unstable or subject to change.
-
 ## Usage
 
 Copperhead simplifies the process of integrating Rust with Python. Use the `@rusty` decorator to automatically mirror Python functions and classes in Rust. Here's a preliminary example:
