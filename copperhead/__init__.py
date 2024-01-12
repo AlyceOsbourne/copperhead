@@ -102,9 +102,14 @@ pub struct {{ cls.name }} {
     {% endfor %}
 }
 
-#[pymethods] impl {{ cls.name }} { #[new] pub fn new({%- for name, value in cls.attrs %}{{ name }}: {{ value }}{%- if 
-not loop.last -%},{%- endif -%}{%- endfor -%}) -> Self { {{ cls.name }} { {%- for name, value in cls.attrs -%} {{ 
-name }}{%- if not loop.last -%},{%- endif -%} {%- endfor -%} } }
+#[pymethods] 
+impl {{ cls.name }} { 
+    #[new] 
+    pub fn new({%- for name, value in cls.attrs %}{{ name }}: {{ value }}{%- if not loop.last -%},{%- endif -%}{%- endfor -%}) -> Self { 
+        {{ cls.name }} { 
+            {%- for name, value in cls.attrs -%} {{name }}{%- if not loop.last -%},{%- endif -%} {%- endfor -%} 
+        } 
+    }
 
     {% for name, args, return_type, doc in cls.methods -%}
     pub fn {{ name }}({{ args|join(', ') }}) -> PyResult<{{ return_type }}> {
