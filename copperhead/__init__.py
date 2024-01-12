@@ -19,7 +19,11 @@ __version__ = "0.0.1"
 old_import = builtins.__import__
 builtins.__import__ = lambda name, *args, **kwargs: mirror(old_import(name, *args, **kwargs))
 
-env = jinja2.Environment()
+env = jinja2.Environment(
+        lstrip_blocks = False,
+        trim_blocks = False,
+        keep_trailing_newline = True,
+)
 TYPE_MAP = {int         : "i32", str: "String", bool: "bool", float: "f32", typing.List: "Vec<{}>", list: "Vec<{}>",
             typing.Dict : 'HashMap<{}, {}>', dict: 'HashMap<{}, {}>', typing.Set: 'HashSet<{}>', set: 'HashSet<{}>',
             typing.Tuple: '({})', tuple: '({})', typing.Self: 'Self', None: '()', }
