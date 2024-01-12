@@ -38,6 +38,7 @@ def rusty(func = None, /, **kwargs):
     func.__rusty__ = True
     for key, value in kwargs.items():
         setattr(func, key, value)
+    # if contains function body
     return func
 
 
@@ -257,7 +258,7 @@ class PyFunction:
         template = """
 #[pyfunction]
 pub fn {{ func.name }}({{ func.args|join(', ') }}) -> PyResult<{{ func.return_type }}> {
-    {{ func.body | indent(4) }
+    {{ func.body | indent(4) }}
 }
         """
         return env.from_string(template, globals = {'func': self}).render()
@@ -301,7 +302,7 @@ class RustFunction:
     def template(self):
         template = """
 fn {{ func.name }}({{ func.args|join(', ') }}) -> {{ func.return_type }} {
-    {{ func.body }}
+    {{ func.body | indent(4) }}
 }
         """
         return env.from_string(template, globals = {'func': self}).render()
@@ -408,6 +409,8 @@ def mirror(module: types.ModuleType):
 
 
 if __name__ == '__main__':
+    UNLINK = False
+    
     @rusty(py_class = True)
     class Particle:
         x: float
@@ -417,12 +420,23 @@ if __name__ == '__main__':
         
         def integrate(self, dt: float) -> None:
             """
-self.x += self.ax * dt;
-self.y += self.ay * dt;
-self.ax *= 0.99;
-self.ay *= 0.99;
-Ok(())
+            self.x += self.ax * dt;
+            self.y += self.ay * dt;
+            self.ax *= 0.99;
+            self.ay *= 0.99;
+            Ok(())
             """
             
+    
+    @rusty(py_function = True)
+    def particle_vec(n: int) -> typing.List[Particle]:
+        """
+        let mut particles = Vec::new();
+        for _ in 0..n {
+            particles.push(Particle::new(0.0, 0.0, 0.0, 0.0));
+        }
+        Ok(particles)
+        """
+    
     import __main__
     
