@@ -1,34 +1,28 @@
-import rustimport
-import jinja2
-import types, typing
+import builtins
+import contextlib
 import dataclasses
 import inspect
-import functools
-import pathlib
-import contextlib
 import os
+import pathlib
+import types
+import typing
+
+import jinja2
+import rustimport
+import rustimport.import_hook
+
+old_import = builtins.__import__
+builtins.__import__ = lambda name, *args, **kwargs: mirror(old_import(name, *args, **kwargs))
 
 env = jinja2.Environment()
-TYPE_MAP = {
-    int: "i32",
-    str: "String",
-    bool        : "bool",
-    float       : "f32",
-    typing.List : "Vec<{}>",
-    list        : "Vec<{}>",
-    typing.Dict : 'HashMap<{}, {}>',
-    dict        : 'HashMap<{}, {}>',
-    typing.Set  : 'HashSet<{}>',
-    set         : 'HashSet<{}>',
-    typing.Tuple: '({})',
-    tuple       : '({})',
-    typing.Self : 'Self',
-    None        : '()',
-}
-UNLINK = True
+TYPE_MAP = {int         : "i32", str: "String", bool: "bool", float: "f32", typing.List: "Vec<{}>", list: "Vec<{}>",
+            typing.Dict : 'HashMap<{}, {}>', dict: 'HashMap<{}, {}>', typing.Set: 'HashSet<{}>', set: 'HashSet<{}>',
+            typing.Tuple: '({})', tuple: '({})', typing.Self: 'Self', None: '()', }
+UNLINK = False
+
 
 # noinspection PyArgumentList,PyTypeChecker
-def rusty(func=None, /, **kwargs):
+def rusty(func = None, /, **kwargs):
     if func is None:
         return lambda func: rusty(func, **kwargs)
     func.__rusty__ = True
@@ -36,20 +30,21 @@ def rusty(func=None, /, **kwargs):
         setattr(func, key, value)
     return func
 
+
 # noinspection PyTypeChecker
 @dataclasses.dataclass
 class PyClass:
     cls: type
-    
+
     def __post_init__(self):
         for name, value in self.cls.__dict__.items():
             if name.startswith('_'):
                 continue
             if callable(value) and not getattr(value, '__rusty__', False):
                 setattr(self.cls, name, rusty(value))
-    
+
     @property
-    def attrs(self)->typing.List[typing.Tuple[str, str]]:
+    def attrs(self) -> typing.List[typing.Tuple[str, str]]:
         attrs = []
         for name, value in self.cls.__annotations__.items():
             if name.startswith('_'):
@@ -61,13 +56,13 @@ class PyClass:
                 value = TYPE_MAP[value]
             attrs.append((name, value))
         return attrs
-    
+
     @property
-    def name(self)->str:
+    def name(self) -> str:
         return self.cls.__name__
-    
+
     @property
-    def methods(self)->typing.List[typing.Tuple[str, typing.List[str], str, str]]:
+    def methods(self) -> typing.List[typing.Tuple[str, typing.List[str], str, str]]:
         methods = []
         for name, value in self.cls.__dict__.items():
             if name.startswith('_'):
@@ -82,17 +77,17 @@ class PyClass:
                     else:
                         if hasattr(args.annotations[arg], '__origin__'):
                             formatted = TYPE_MAP[args.annotations[arg].__origin__]
-                            mapped_arg.append(
-                                    formatted.format(*[f"{name}: {TYPE_MAP[arg].format(*[TYPE_MAP[arg] for arg in args.annotations[arg].__args__])}" for arg in args.annotations[arg].__args__])
-                            )
+                            mapped_arg.append(formatted.format(*[
+                                    f"{name}: {TYPE_MAP[arg].format(*[TYPE_MAP[arg] for arg in args.annotations[arg].__args__])}"
+                                    for arg in args.annotations[arg].__args__]))
                         else:
                             # mapped_arg.append(TYPE_MAP[args.annotations[arg]])
                             mapped_arg.append(f"{arg}: {TYPE_MAP[args.annotations[arg]]}")
                 methods.append((name, mapped_arg, return_type, inspect.getdoc(value)))
         return methods
-    
+
     @property
-    def template(self)->str:
+    def template(self) -> str:
         template = """
 #[pyclass(get_all, set_all)]
 #[derive(Debug)]
@@ -102,16 +97,9 @@ pub struct {{ cls.name }} {
     {% endfor %}
 }
 
-#[pymethods]
-impl {{ cls.name }} {
-    #[new]
-    pub fn new({%- for name, value in cls.attrs %}{{ name }}: {{ value }}{%- if not loop.last -%},{%- endif -%}{%- endfor -%}) -> Self {
-        {{ cls.name }} {
-            {%- for name, value in cls.attrs -%}
-            {{ name }}{%- if not loop.last -%},{%- endif -%}
-            {%- endfor -%}
-        }
-    }
+#[pymethods] impl {{ cls.name }} { #[new] pub fn new({%- for name, value in cls.attrs %}{{ name }}: {{ value }}{%- if 
+not loop.last -%},{%- endif -%}{%- endfor -%}) -> Self { {{ cls.name }} { {%- for name, value in cls.attrs -%} {{ 
+name }}{%- if not loop.last -%},{%- endif -%} {%- endfor -%} } }
 
     {% for name, args, return_type, doc in cls.methods -%}
     pub fn {{ name }}({{ args|join(', ') }}) -> PyResult<{{ return_type }}> {
@@ -124,22 +112,23 @@ impl {{ cls.name }} {
     }
 }
         """
-        return env.from_string(template, globals={'cls': self}).render()
+        return env.from_string(template, globals = {'cls': self}).render()
+
 
 # noinspection PyTypeChecker
 @dataclasses.dataclass
 class RustClass:
     cls: type
-    
+
     def __post_init__(self):
         for name, value in self.cls.__dict__.items():
             if name.startswith('_'):
                 continue
             if callable(value) and not getattr(value, '__rusty__', False):
                 setattr(self.cls, name, rusty(value))
-    
+
     @property
-    def attrs(self)->typing.List[typing.Tuple[str, str]]:
+    def attrs(self) -> typing.List[typing.Tuple[str, str]]:
         attrs = []
         for name, value in self.cls.__annotations__.items():
             if name.startswith('_'):
@@ -153,11 +142,11 @@ class RustClass:
         return attrs
 
     @property
-    def name(self)->str:
+    def name(self) -> str:
         return self.cls.__name__
-    
+
     @property
-    def methods(self)->typing.List[typing.Tuple[str, typing.List[str], str, str]]:
+    def methods(self) -> typing.List[typing.Tuple[str, typing.List[str], str, str]]:
         methods = []
         for name, value in self.cls.__dict__.items():
             if name.startswith('_'):
@@ -173,15 +162,14 @@ class RustClass:
                         if hasattr(args.annotations[arg], '__origin__'):
                             formatted = TYPE_MAP[args.annotations[arg].__origin__]
                             mapped_arg.append(
-                                    formatted.format(*[TYPE_MAP[arg] for arg in args.annotations[arg].__args__])
-                            )
+                                    formatted.format(*[TYPE_MAP[arg] for arg in args.annotations[arg].__args__]))
                         else:
                             mapped_arg.append(TYPE_MAP[args.annotations[arg]])
                 methods.append((name, mapped_arg, return_type, inspect.getdoc(value)))
         return methods
-    
+
     @property
-    def template(self)->str:
+    def template(self) -> str:
         template = """
 #[derive(Debug)]
 pub struct {{ cls.name }} {
@@ -207,19 +195,21 @@ impl {{ cls.name }} {
     {%- endfor %}
     
 }
-        """ 
-        return env.from_string(template, globals={'cls': self}).render()
+        """
+        return env.from_string(template, globals = {'cls': self}).render()
+
 
 # noinspection PyTypeChecker
 @dataclasses.dataclass
 class PyFunction:
     func: types.FunctionType
+
     @property
-    def name(self)->str:
+    def name(self) -> str:
         return self.func.__name__
-    
+
     @property
-    def args(self)->typing.List[str]:
+    def args(self) -> typing.List[str]:
         args = inspect.getfullargspec(self.func)
         mapped_arg = []
         for name, _type in args.annotations.items():
@@ -234,41 +224,42 @@ class PyFunction:
                 else:
                     mapped_arg.append(f"{name}: {TYPE_MAP[_type]}")
         return mapped_arg
-    
+
     @property
-    def return_type(self)->str:
+    def return_type(self) -> str:
         ret = inspect.getfullargspec(self.func).annotations['return']
         if hasattr(ret, '__origin__'):
             formatted = TYPE_MAP[ret.__origin__]
             return formatted.format(*[TYPE_MAP[arg] for arg in ret.__args__])
         else:
             return TYPE_MAP[ret]
-    
+
     @property
-    def body(self)->str:
+    def body(self) -> str:
         return inspect.getdoc(self.func)
-    
+
     @property
-    def template(self)->str:
+    def template(self) -> str:
         template = """
 #[pyfunction]
 pub fn {{ func.name }}({{ func.args|join(', ') }}) -> PyResult<{{ func.return_type }}> {
     {{ func.body }}
 }
         """
-        return env.from_string(template, globals={'func': self}).render()
+        return env.from_string(template, globals = {'func': self}).render()
+
 
 # noinspection PyTypeChecker
 @dataclasses.dataclass
 class RustFunction:
     func: types.FunctionType
-    
+
     @property
-    def name(self)->str:
+    def name(self) -> str:
         return self.func.__name__
-    
+
     @property
-    def args(self)->typing.List[str]:
+    def args(self) -> typing.List[str]:
         args = inspect.getfullargspec(self.func)
         mapped_arg = []
         for name, _type in args.annotations.items():
@@ -283,15 +274,15 @@ class RustFunction:
                 else:
                     mapped_arg.append(f"{name}: {TYPE_MAP[_type]}")
         return mapped_arg
-    
+
     @property
-    def return_type(self)->str:
+    def return_type(self) -> str:
         return TYPE_MAP[inspect.getfullargspec(self.func).annotations['return']]
-    
+
     @property
-    def body(self)->str:
+    def body(self) -> str:
         return inspect.getdoc(self.func)
-    
+
     @property
     def template(self):
         template = """
@@ -299,16 +290,18 @@ fn {{ func.name }}({{ func.args|join(', ') }}) -> {{ func.return_type }} {
     {{ func.body }}
 }
         """
-        return env.from_string(template, globals={'func': self}).render()
+        return env.from_string(template, globals = {'func': self}).render()
+
 
 @dataclasses.dataclass
 class RustyModule:
     module: types.ModuleType
-    
+
     @property
     def name(self):
-        return self.module.__name__
-    
+        # return self.module.__name__
+        return f"rust_{self.module.__name__.strip('_')}"
+
     @property
     def classes(self):
         classes = []
@@ -319,7 +312,7 @@ class RustyModule:
                 else:
                     classes.append(RustClass(cls))
         return classes
-    
+
     @property
     def functions(self):
         functions = []
@@ -328,7 +321,7 @@ class RustyModule:
                 if not getattr(func, 'py_function', False):
                     functions.append(RustFunction(func))
         return functions
-    
+
     @property
     def py_functions(self):
         functions = []
@@ -337,6 +330,7 @@ class RustyModule:
                 if getattr(func, 'py_function', False):
                     functions.append(PyFunction(func))
         return functions
+
     @property
     def template(self):
         template = """
@@ -356,7 +350,7 @@ use pyo3::prelude::*;
 {%- endfor %}
 
 #[pymodule]
-fn rust_{{ module.name }}(_py: Python, m: &PyModule) -> PyResult<()> {
+fn {{ module.name }}(_py: Python, m: &PyModule) -> PyResult<()> {
     {% for cls in module.classes -%}
     m.add_class::<{{ cls.name }}>()?;
     {%- endfor %}
@@ -366,7 +360,9 @@ fn rust_{{ module.name }}(_py: Python, m: &PyModule) -> PyResult<()> {
     Ok(())
 }
 """.strip()
-        return env.from_string(template, globals={'module': self}).render()
+        return env.from_string(template, globals = {'module': self}).render()
+
+
 def should_mirror(module: types.ModuleType):
     if hasattr(module, '__rust_module__'):
         return False
@@ -374,35 +370,24 @@ def should_mirror(module: types.ModuleType):
         if getattr(value, '__rusty__', False):
             return True
     return False
+
+
 def mirror(module: types.ModuleType):
     if not should_mirror(module):
         return module
     rust_module = RustyModule(module)
-    if (
-            not pathlib.Path(f"rust_{module.__name__}.rs").exists() 
-            or open(f'rust_{module.__name__}.rs', 'r').read() != rust_module.template
-    ):
-        with open(f'rust_{module.__name__}.rs', 'w') as f:
-            f.write(rust_module.template)
+    if (not pathlib.Path(f"{module.__name__}.rs").exists() or open(f'{module.__name__}.rs',
+                                                                   'r').read() != rust_module.template):
+        with open(f'{module.__name__}.rs', 'w') as f:
+            f.write(module.template)
         with contextlib.redirect_stdout(None):
             rustimport.build_filepath(f'rust_{module.__name__}.rs')
-    module.__rust_module__ = rustimport.imp_from_path(f'rust_{module.__name__}.rs', f"rust_{module.__name__}")
+    module.__rust_module__ = rustimport.imp_from_path(f'{module.__name__}.rs', f"{module.__name__}")
     for name, value in inspect.getmembers(module):
         if getattr(value, '__rusty__', False):
             setattr(module, name, getattr(module.__rust_module__, name))
     if UNLINK:
-        pathlib.Path(f'rust_{module.__name__}.rs').unlink()
+        pathlib.Path(f'{module.__name__}.rs').unlink()
     else:
-        os.utime(f'rust_{module.__name__}.rs', None)
+        os.utime(f'{module.__name__}.rs', None)
     return module
-
-import rustimport.import_hook
-import builtins
-
-old_import = builtins.__import__
-
-def new_import(name, *args, **kwargs):
-    return mirror(old_import(name, *args, **kwargs))
-
-builtins.__import__ = new_import
-
