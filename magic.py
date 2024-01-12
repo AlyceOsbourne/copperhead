@@ -7,6 +7,7 @@ import functools
 import pathlib
 import contextlib
 import os
+
 env = jinja2.Environment()
 TYPE_MAP = {
     int: "i32",
@@ -403,3 +404,29 @@ def import_hook():
 mirror_main = functools.partial(mirror, module=__import__('__main__'))
 import logging
 rustimport._logger.setLevel(logging.ERROR)
+
+if __name__ == '__main__':
+    @rusty(py_function = True)
+    def add(a: int, b: int) -> int:
+        """Ok(a + b)"""
+
+
+    @rusty(py_class = True)
+    class Foo:
+        a: int
+        b: int
+
+        @rusty
+        def sum(self) -> int:
+            """
+            println!("summing {} and {}", self.a, self.b);
+            Ok(self.a + self.b)
+            """
+
+
+    def main():
+        mirror_main()
+        print(add(1, 2))
+        print(Foo(1, 2).sum())
+        
+    main()
