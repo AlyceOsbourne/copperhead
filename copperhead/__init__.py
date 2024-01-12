@@ -381,18 +381,18 @@ def mirror(module: types.ModuleType):
     if not should_mirror(module):
         return module
     rust_module = RustyModule(module)
-    if (not pathlib.Path(f"{module.__name__}.rs").exists() or open(f'{module.__name__}.rs',
+    if (not pathlib.Path(f"{rust_module.name}.rs").exists() or open(f'{rust_module.name}.rs',
                                                                    'r').read() != rust_module.template):
-        with open(f'{module.__name__}.rs', 'w') as f:
+        with open(f'{rust_module.name}.rs', 'w') as f:
             f.write(module.template)
         with contextlib.redirect_stdout(None):
-            rustimport.build_filepath(f'rust_{module.__name__}.rs')
-    module.__rust_module__ = rustimport.imp_from_path(f'{module.__name__}.rs', f"{module.__name__}")
+            rustimport.build_filepath(f'{rust_module.name}.rs')
+    module.__rust_module__ = rustimport.imp_from_path(f'{rust_module.name}.rs', f'{rust_module.name}')
     for name, value in inspect.getmembers(module):
         if getattr(value, '__rusty__', False):
             setattr(module, name, getattr(module.__rust_module__, name))
     if UNLINK:
-        pathlib.Path(f'{module.__name__}.rs').unlink()
+        pathlib.Path(f'{rust_module.name}.rs').unlink()
     else:
-        os.utime(f'{module.__name__}.rs', None)
+        os.utime(f'{rust_module.name}.rs')
     return module
