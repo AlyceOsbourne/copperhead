@@ -1,3 +1,6 @@
+"""
+Welcome to Copperhead, a tool to inline Rust code into Python.
+"""
 import builtins
 import contextlib
 import dataclasses
@@ -10,6 +13,8 @@ import typing
 import jinja2
 import rustimport
 import rustimport.import_hook
+
+__version__ = "0.0.1"
 
 old_import = builtins.__import__
 builtins.__import__ = lambda name, *args, **kwargs: mirror(old_import(name, *args, **kwargs))
