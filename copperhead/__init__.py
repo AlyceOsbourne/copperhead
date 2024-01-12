@@ -384,7 +384,7 @@ def mirror(module: types.ModuleType):
     if (not pathlib.Path(f"{rust_module.name}.rs").exists() or open(f'{rust_module.name}.rs',
                                                                    'r').read() != rust_module.template):
         with open(f'{rust_module.name}.rs', 'w') as f:
-            f.write(module.template)
+            f.write(rust_module.template)
         with contextlib.redirect_stdout(None):
             rustimport.build_filepath(f'{rust_module.name}.rs')
     module.__rust_module__ = rustimport.imp_from_path(f'{rust_module.name}.rs', f'{rust_module.name}')
