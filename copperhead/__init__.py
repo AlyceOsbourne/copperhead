@@ -86,9 +86,8 @@ class PyClass:
                                     f"{name}: {TYPE_MAP[arg].format(*[TYPE_MAP[arg] for arg in args.annotations[arg].__args__])}"
                                     for arg in args.annotations[arg].__args__]))
                         else:
-                            # mapped_arg.append(TYPE_MAP[args.annotations[arg]])
                             mapped_arg.append(f"{arg}: {TYPE_MAP[args.annotations[arg]]}")
-                methods.append((name, mapped_arg, return_type, inspect.getdoc(value)))
+                methods.append((name, mapped_arg, return_type, inspect.getdoc(value).strip()))
         return methods
 
     @property
