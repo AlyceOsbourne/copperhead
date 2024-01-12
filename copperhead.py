@@ -23,24 +23,30 @@ TYPE_MAP = {
     typing.Tuple: '({})',
     tuple       : '({})',
     typing.Self : 'Self',
+    None        : '()',
 }
-UNLINK = False
-
+UNLINK = True
 
 # noinspection PyArgumentList,PyTypeChecker
 def rusty(func=None, /, **kwargs):
     if func is None:
         return lambda func: rusty(func, **kwargs)
-    func.rusty = True
+    func.__rusty__ = True
     for key, value in kwargs.items():
         setattr(func, key, value)
     return func
-
 
 # noinspection PyTypeChecker
 @dataclasses.dataclass
 class PyClass:
     cls: type
+    
+    def __post_init__(self):
+        for name, value in self.cls.__dict__.items():
+            if name.startswith('_'):
+                continue
+            if callable(value) and not getattr(value, '__rusty__', False):
+                setattr(self.cls, name, rusty(value))
     
     @property
     def attrs(self)->typing.List[typing.Tuple[str, str]]:
@@ -66,21 +72,22 @@ class PyClass:
         for name, value in self.cls.__dict__.items():
             if name.startswith('_'):
                 continue
-            if callable(value) and getattr(value, 'rusty', False):
+            if callable(value) and getattr(value, '__rusty__', False):
                 args = inspect.getfullargspec(value)
                 mapped_arg = []
                 return_type = TYPE_MAP[args.annotations['return']]
                 for arg in args.args:
                     if arg == 'self':
-                        mapped_arg.append('&self')
+                        mapped_arg.append('&mut self')
                     else:
                         if hasattr(args.annotations[arg], '__origin__'):
                             formatted = TYPE_MAP[args.annotations[arg].__origin__]
                             mapped_arg.append(
-                                    formatted.format(*[TYPE_MAP[arg] for arg in args.annotations[arg].__args__])
+                                    formatted.format(*[f"{name}: {TYPE_MAP[arg].format(*[TYPE_MAP[arg] for arg in args.annotations[arg].__args__])}" for arg in args.annotations[arg].__args__])
                             )
                         else:
-                            mapped_arg.append(TYPE_MAP[args.annotations[arg]])
+                            # mapped_arg.append(TYPE_MAP[args.annotations[arg]])
+                            mapped_arg.append(f"{arg}: {TYPE_MAP[args.annotations[arg]]}")
                 methods.append((name, mapped_arg, return_type, inspect.getdoc(value)))
         return methods
     
@@ -119,11 +126,17 @@ impl {{ cls.name }} {
         """
         return env.from_string(template, globals={'cls': self}).render()
 
-
 # noinspection PyTypeChecker
 @dataclasses.dataclass
 class RustClass:
     cls: type
+    
+    def __post_init__(self):
+        for name, value in self.cls.__dict__.items():
+            if name.startswith('_'):
+                continue
+            if callable(value) and not getattr(value, '__rusty__', False):
+                setattr(self.cls, name, rusty(value))
     
     @property
     def attrs(self)->typing.List[typing.Tuple[str, str]]:
@@ -149,8 +162,7 @@ class RustClass:
         for name, value in self.cls.__dict__.items():
             if name.startswith('_'):
                 continue
-            if callable(value) and getattr(value, 'rusty', False):
-                # get the name, the mapped args and return type, and the doc as the body
+            if callable(value) and getattr(value, '__rusty__', False):
                 args = inspect.getfullargspec(value)
                 mapped_arg = []
                 return_type = TYPE_MAP[args.annotations['return']]
@@ -197,7 +209,6 @@ impl {{ cls.name }} {
 }
         """ 
         return env.from_string(template, globals={'cls': self}).render()
-
 
 # noinspection PyTypeChecker
 @dataclasses.dataclass
@@ -302,7 +313,7 @@ class RustyModule:
     def classes(self):
         classes = []
         for name, cls in inspect.getmembers(self.module, inspect.isclass):
-            if getattr(cls, 'rusty', False):
+            if getattr(cls, '__rusty__', False):
                 if getattr(cls, 'py_class', False):
                     classes.append(PyClass(cls))
                 else:
@@ -313,7 +324,7 @@ class RustyModule:
     def functions(self):
         functions = []
         for name, func in inspect.getmembers(self.module, inspect.isfunction):
-            if getattr(func, 'rusty', False):
+            if getattr(func, '__rusty__', False):
                 if not getattr(func, 'py_function', False):
                     functions.append(RustFunction(func))
         return functions
@@ -322,7 +333,7 @@ class RustyModule:
     def py_functions(self):
         functions = []
         for name, func in inspect.getmembers(self.module, inspect.isfunction):
-            if getattr(func, 'rusty', False):
+            if getattr(func, '__rusty__', False):
                 if getattr(func, 'py_function', False):
                     functions.append(PyFunction(func))
         return functions
@@ -331,8 +342,6 @@ class RustyModule:
         template = """
 // rustimport:pyo3
 use pyo3::prelude::*;
-#[allow(non_snake_case)]
-#[allow(dead_code)]
 
 {% for cls in module.classes -%}
 {{ cls.template}}
@@ -358,16 +367,13 @@ fn rust_{{ module.name }}(_py: Python, m: &PyModule) -> PyResult<()> {
 }
 """.strip()
         return env.from_string(template, globals={'module': self}).render()
-
 def should_mirror(module: types.ModuleType):
-    return (
-            any(
-            getattr(value, 'rusty', False) 
-            for name, value 
-            in inspect.getmembers(module)) 
-            and not hasattr(module, '__rust_module__')
-            )
-
+    if hasattr(module, '__rust_module__'):
+        return False
+    for name, value in inspect.getmembers(module):
+        if getattr(value, '__rusty__', False):
+            return True
+    return False
 def mirror(module: types.ModuleType):
     if not should_mirror(module):
         return module
@@ -382,7 +388,7 @@ def mirror(module: types.ModuleType):
             rustimport.build_filepath(f'rust_{module.__name__}.rs')
     module.__rust_module__ = rustimport.imp_from_path(f'rust_{module.__name__}.rs', f"rust_{module.__name__}")
     for name, value in inspect.getmembers(module):
-        if getattr(value, 'rusty', False):
+        if getattr(value, '__rusty__', False):
             setattr(module, name, getattr(module.__rust_module__, name))
     if UNLINK:
         pathlib.Path(f'rust_{module.__name__}.rs').unlink()
@@ -390,43 +396,13 @@ def mirror(module: types.ModuleType):
         os.utime(f'rust_{module.__name__}.rs', None)
     return module
 
-def import_hook():
-    import rustimport.import_hook
-    import builtins
-    old_import = builtins.__import__
+import rustimport.import_hook
+import builtins
 
-    # noinspection PyArgumentList
-    def new_import(name, *args, **kwargs):
-        return mirror(old_import(name, *args, **kwargs))
-    
-    builtins.__import__ = new_import
-    
-mirror_main = functools.partial(mirror, module=__import__('__main__'))
-import logging
-rustimport._logger.setLevel(logging.ERROR)
+old_import = builtins.__import__
 
-if __name__ == '__main__':
-    @rusty(py_function = True)
-    def add(a: int, b: int) -> int:
-        """Ok(a + b)"""
+def new_import(name, *args, **kwargs):
+    return mirror(old_import(name, *args, **kwargs))
 
+builtins.__import__ = new_import
 
-    @rusty(py_class = True)
-    class Foo:
-        a: int
-        b: int
-
-        @rusty
-        def sum(self) -> int:
-            """
-            println!("summing {} and {}", self.a, self.b);
-            Ok(self.a + self.b)
-            """
-
-
-    def main():
-        mirror_main()
-        print(add(1, 2))
-        print(Foo(1, 2).sum())
-        
-    main()
