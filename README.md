@@ -36,10 +36,6 @@ def main():
 main()
 ```
 
-## Current Status and Key Features
-
-Copperhead is in active development. The library automatically generates Rust code from Python functions and classes decorated with `@rusty`, and handles type conversion between Python and Rust types.
-
 ## Contributing
 
 Contributions are welcome. Submit pull requests or open issues on the project repository.
